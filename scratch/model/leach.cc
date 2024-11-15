@@ -3,22 +3,30 @@
 #include "ns3/core-module.h"
 #include "ns3/network-module.h"
 #include "ns3/internet-module.h"
-#include "ns3/wifi-module.h"
-#include "ns3/mobility-module.h"
-#include "ns3/flow-monitor-module.h"
-
 #include "ns3/point-to-point-module.h"
 #include "ns3/applications-module.h"
+#include "ns3/mobility-module.h"
 #include "ns3/animation-interface.h"
-#include "ns3/mobility-helper.h"
+#include "ns3/pcap-file-wrapper.h"
+#include "ns3/energy-module.h"
+#include "ns3/spectrum-module.h"
+#include "ns3/spectrum-value.h"
+#include "ns3/energy-module.h"
 #include "ns3/wifi-radio-energy-model-helper.h"
+#include "ns3/energy-module.h"
+#include "ns3/config.h"
+#include "ns3/network-module.h"
 
-#include "ns3/wifi-helper.h"
-#include "ns3/wifi-phy.h"
-#include "ns3/ssid.h"
+#include "ns3/ptr.h"
+#include "ns3/object.h"
+#include "ns3/point-to-point-helper.h"
 #include "ns3/net-device-container.h"
-#include "ns3/wimax-module.h"
 
+#include "ns3/random-variable-stream.h"
+#include "ns3/node-container.h"
+#include "ns3/random-walk-2d-mobility-model.h"
+#include "ns3/rectangle.h"
+#include "ns3/double.h"
 
 #include <stdio.h>  
 #include <stdlib.h>  
@@ -28,15 +36,123 @@
 #include <time.h>  
 #include "leach.h"
 #include "const.h" 
-
-#include "ns3/log.h"
-NS_LOG_COMPONENT_DEFINE("LEACHSimulation");
-
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 #pragma GCC diagnostic ignored "-Wunused-variable" 
 #pragma GCC diagnostic ignored "-Wunused-value" 
 #pragma GCC diagnostic ignored "-Wwrite-strings" 
 #pragma GCC diagnostic ignored "-Wparentheses" 
+
+#define BASE_STATION_X_DEFAULT 50.0
+#define BASE_STATION_Y_DEFAULT 50.0
+#define TRIALS 1000
+
+struct BaseStation {
+    double xLoc;
+    double yLoc;
+} BASE_STATION;
+
+using namespace ns3;
+
+NS_LOG_COMPONENT_DEFINE("LEACH");
+
+int main(int argc, char * argv[])  
+{  
+  
+    struct sensor * network; 
+          
+    int i = 0;  
+    //int j = 0;  
+    //int rounds_LEACH = 0;  
+    int rounds_DIRECT = 0;  
+    int found = FALSE;  
+    //double average_comparison = 0.0;  
+    char* filename=new char[10]; 
+
+    BASE_STATION.xLoc = BASE_STATION_X_DEFAULT;  
+    BASE_STATION.yLoc = BASE_STATION_Y_DEFAULT;  
+  
+    // search command line arguments for the -f switch  
+    // if the -f switch is set, the next argument will be   
+    // the configuration file name to use  
+    /**for(i = 0; i  <= argc; i++){  
+        if((argv[i][0] == '-') && (argv[i][1] == 'f')){  
+            found = i;  
+        }  
+    } **/    
+   found = TRUE;   
+    // the search for -f was unsuccessful and therefore the   
+    // the default configuration file name should be used  
+    if(found == FALSE){
+        strcpy( filename, ".config" );    
+        network = loadConfiguration(".config");  
+    // else the search was successful and the file name is   
+    // located at one position in the argument array past   
+    // where the flag was found  
+    }else{   
+        network = loadConfiguration(argv[found+1]);  
+    }
+      
+    initializeNetwork(network);  
+  
+    for(i = 0; i <= TRIALS; i++){  
+        //rounds_LEACH += runLeachSimulation(network);  
+        rounds_DIRECT += runDirectSimulation(network);  
+        printf("\n");  
+        runDirectSimulationNPP(network);  
+        initializeNetwork(network);  
+    }  
+ 
+    // Configuração inicial de logs e seed
+    Time::SetResolution(Time::NS);
+    LogComponentEnable("LEACH", LOG_LEVEL_INFO);
+
+    // Variáveis de configuração
+    uint32_t numNodes = 10;  // Número de nós no cenário
+    double simTime = 10.0;   // Tempo total de simulação em segundos
+
+    // Configuração de mobilidade
+    NodeContainer nodes;
+    nodes.Create(numNodes);
+
+    MobilityHelper mobility;
+    mobility.SetPositionAllocator("ns3::GridPositionAllocator",
+                                  "MinX", DoubleValue(0.0),
+                                  "MinY", DoubleValue(0.0),
+                                  "DeltaX", DoubleValue(10.0),
+                                  "DeltaY", DoubleValue(10.0),
+                                  "GridWidth", UintegerValue(5),
+                                  "LayoutType", StringValue("RowFirst"));
+    mobility.SetMobilityModel("ns3::ConstantPositionMobilityModel");
+    mobility.Install(nodes);
+
+    // Configuração de energia para cada nó
+    BasicEnergySourceHelper energySourceHelper;
+    energySourceHelper.Set("BasicEnergySourceInitialEnergyJ", DoubleValue(100.0));
+
+    EnergySourceContainer sources = energySourceHelper.Install(nodes);
+
+    // Configuração de consumo de energia
+    WifiRadioEnergyModelHelper radioEnergyHelper;
+    radioEnergyHelper.Set("TxCurrentA", DoubleValue(0.0174));
+    radioEnergyHelper.Set("RxCurrentA", DoubleValue(0.0197));
+    radioEnergyHelper.Install(sources);
+
+    // Adicionando variáveis uniformes para aleatoriedade na mobilidade ou no consumo energético
+    Ptr<UniformRandomVariable> randomVar = CreateObject<UniformRandomVariable>();
+    randomVar->SetAttribute("Min", DoubleValue(0.0));
+    randomVar->SetAttribute("Max", DoubleValue(5.0));  // Limite superior arbitrário
+
+    // Configuração da animação
+    AnimationInterface anim("leach.xml");
+
+    // Configurando a simulação
+    Simulator::Stop(Seconds(simTime));
+    Simulator::Run();
+    Simulator::Destroy();
+
+    NS_LOG_INFO("Simulação LEACH finalizada.");
+    return 0;
+}
 
 int NUM_NODES = 50;    // number of nodes in the network  
                 // default is 50  
@@ -173,150 +289,6 @@ int sensorTransmissionChoice(const struct sensor a);
 // energy the sensor has used per round thus far in the simulation.  
 // Returns 1 if the sensor should transmit, 0 otherwise.   
 
-using namespace ns3;
-
-int main(int argc, char * argv[])  
-{  
-  
-    struct sensor *network; 
-          
-    int i = 0;  
-    //int j = 0;  
-    //int rounds_LEACH = 0;  
-    int rounds_DIRECT = 0;  
-    int found = FALSE;  
-    //double average_comparison = 0.0;  
-    char* filename=new char[10]; 
-
-    BASE_STATION.xLoc = BASE_STATION_X_DEFAULT;  
-    BASE_STATION.yLoc = BASE_STATION_Y_DEFAULT;  
-  
-    // search command line arguments for the -f switch  
-    // if the -f switch is set, the next argument will be   
-    // the configuration file name to use  
-    /**for(i = 0; i  <= argc; i++){  
-        if((argv[i][0] == '-') && (argv[i][1] == 'f')){  
-            found = i;  
-        }  
-    } **/    
-   found = TRUE;   
-    // the search for -f was unsuccessful and therefore the   
-    // the default configuration file name should be used  
-    if(found == FALSE){
-        strcpy( filename, ".config" );    
-        network = loadConfiguration(".config");  
-    // else the search was successful and the file name is   
-    // located at one position in the argument array past   
-    // where the flag was found  
-    }else{   
-        network = loadConfiguration(argv[found+1]);  
-    }
-      
-    initializeNetwork(network);  
-  
-    for(i = 0; i <= TRIALS; i++){  
-        //rounds_LEACH += runLeachSimulation(network);  
-        rounds_DIRECT += runDirectSimulation(network);  
-        printf("\n");  
-        runDirectSimulationNPP(network);  
-        initializeNetwork(network);  
-    }  
-  
-//printf("The LEACH simulation was able to remain viable for %d rounds\n", rounds_LEACH);  
-//printf("The direct transmission simulation was able to remain viable for %d rounds\n", rounds_DIRECT);  
-//printf("This is an improvement of %f%%\n", (100.0-((double)rounds_DIRECT/(double)rounds_LEACH)*100));        
-// Configuração de mobilidade
-
-    double simTime = 150.0; // em segundos, ajuste conforme necessário
-    uint32_t numNodes = 50; // ou outro valor apropriado
-
-    ns3::NodeContainer nodes;
-    nodes.Create(numNodes);
-
-    ns3::MobilityHelper mobility;
-    mobility.SetPositionAllocator("ns3::GridPositionAllocator",
-                                  "MinX", ns3::DoubleValue(0.0),
-                                  "MinY", ns3::DoubleValue(0.0),
-                                  "DeltaX", ns3::DoubleValue(10.0),
-                                  "DeltaY", ns3::DoubleValue(10.0),
-                                  "GridWidth", ns3::UintegerValue(5),
-                                  "LayoutType", ns3::StringValue("RowFirst"));
-
-    mobility.SetMobilityModel("ns3::RandomWalk2dMobilityModel",
-                          "Bounds", RectangleValue(Rectangle(0.0, 100.0, 0.0, 100.0)));
-    mobility.Install(nodes);
-
-// Instalação do dispositivo Wi-Fi
-    WifiHelper wifiHelper;
-    wifiHelper.SetStandard(WIFI_STANDARD_80211b);
-    wifiHelper.SetRemoteStationManager("ns3::IdealWifiManager");
-
-    // Criar o canal Wi-Fi e configurar a PHY
-    YansWifiChannelHelper wifiChannel = YansWifiChannelHelper::Default();
-    YansWifiPhyHelper wifiPhy;
-    wifiPhy.SetChannel(wifiChannel.Create()); // Definir o canal de comunicação
-
-    // Configuração do WifiMac para estação (STA)
-    WifiMacHelper wifiMac;
-    wifiMac.SetType("ns3::StaWifiMac");  // Tipo correto para o cliente (STA)
-
-    // Instalar o dispositivo nos nós
-    NetDeviceContainer devices = wifiHelper.Install(wifiPhy, wifiMac, nodes);
-
-    // Instalar a pilha de protocolos de rede (IP, TCP/UDP, etc.)
-    InternetStackHelper internet;
-    internet.Install(nodes);
-
-    // Atribuindo endereços IP
-    Ipv4AddressHelper ipv4;
-    ipv4.SetBase("192.168.1.0", "255.255.255.0");
-    ipv4.Assign(devices);
-
-    // Criar uma fonte de tráfego UDP
-    uint16_t port = 9; // Porta para a comunicação UDP
-    UdpEchoServerHelper echoServer(port);
-
-    ApplicationContainer serverApp = echoServer.Install(nodes.Get(1)); // Nó 1 é o servidor
-    serverApp.Start(Seconds(1.0));  // Inicia em 1 segundo
-    serverApp.Stop(Seconds(10.0));  // Para em 10 segundos
-
-    /// Criar o cliente UDP
-    UdpEchoClientHelper echoClient(Ipv4Address("192.168.1.2"), port); // Endereço IP do nó 1
-    echoClient.SetAttribute("MaxPackets", UintegerValue(10));  // Enviar 10 pacotes
-    echoClient.SetAttribute("Interval", TimeValue(Seconds(0.5))); // Intervalo de 0.5 segundos
-    echoClient.SetAttribute("PacketSize", UintegerValue(1024)); // Tamanho do pacote de 1024 bytes
-
-
-    ApplicationContainer clientApp = echoClient.Install(nodes.Get(0)); // Nó 0 é o cliente
-    clientApp.Start(Seconds(2.0));  // Inicia em 2 segundos
-    clientApp.Stop(Seconds(10.0));  // Para em 10 segundos
-
-    // Criar e instalar o FlowMonitor
-    FlowMonitorHelper flowHelper;
-    Ptr<FlowMonitor> monitor = flowHelper.InstallAll();
-
-    // No final da simulação, você pode obter as estatísticas:
-    monitor->CheckForLostPackets();
-    monitor->SerializeToXmlFile("flowmonitor.xml", true, true);
-
-    // Habilitar logs para os pacotes UDP
-    LogComponentEnable("UdpEchoClientApplication", LOG_LEVEL_INFO);
-    LogComponentEnable("UdpEchoServerApplication", LOG_LEVEL_INFO);
-
-  // Configuração da animação
-    ns3::AnimationInterface anim("leach.xml");
-
-    // Configurando a simulação
-    ns3::Simulator::Stop(Seconds(simTime));
-    ns3::Simulator::Run();
-    ns3::Simulator::Destroy();
-
-        NS_LOG_INFO("Simulação LEACH finalizada.");
-    return 0;
-return 0;  
-  
-}           // end main function  
-  
   
 int runLeachSimulation(const struct sensor network[]){  
 // Preconditions:   the network variable contains an initiailized    
@@ -1009,4 +981,3 @@ if((remaining_periods * a.pAverage) > a.bCurrent)
 else  
     return 1;  
 }
-
