@@ -1,6 +1,6 @@
 Prezados pesquisadores,
 
-Aqui apresento a voces um estudo focado no algoritimo de LEACH (Low-Energy Adaptive Clustering Hierarchy)em portugues protocolo de baixo consumo de energia para Agrupamento Adaptativo e hierarquico. Trata-se de um protocolo de comunicação eficiente em termos de energia projetado para redes de sensores sem fio (WSN - Wireless Sensor Networks). Seu principal objetivo e prolongar a vida util da rede, reduzindo o consumo de energia. A abordagem do LEACH e baseada na formação de cluster e na rotação dos “cluster heads” (cabecas de cluster), que sao responsaveis pela coleta de dados dos sensores do cluster e pela comunicacao direta com a base (sink). 
+Aqui apresento a voces um estudo focado no algoritimo de LEACH (Low-Energy Adaptive Clustering Hierarchy)em portugues protocolo de baixo consumo de energia para Agrupamento Adaptativo e hierarquico. Trata-se de um protocolo de comunicacao eficiente em termos de energia projetado para redes de sensores sem fio (WSN - Wireless Sensor Networks). Seu principal objetivo e prolongar a vida util da rede, reduzindo o consumo de energia. A abordagem do LEACH e baseada na formacao de cluster e na rotacao dos cluster heads (cabecas de cluster), que sao responsaveis pela coleta de dados dos sensores do cluster e pela comunicacao direta com a base (sink). 
 
 Para simular o protocolo utilizaremos o simulador NS3 cuja documentacao pode ser encontrada no site https://www.nsnam.org/docs/tutorial-pt-br/html/index.html . O NS3 e um simulador de eventos discretos. As versoes do ns-3 sao lancadas duas ou tres vezes por ano e sao disponibilizadas principalmente como arquivos de origem compactados. Download (https://www.nsnam.org/releases/).
 
@@ -10,7 +10,7 @@ Para compila o projeto habilitando os exemplos entre na pasta raiz compile o ns3
 
 ns-allinone-3.43$./build.py --enable-examples --enable-tests
 
-Agora vamos contruir o ns3, fique atento as diferencas contidas nas ultimas versões. Ao invéz do “waf” utilize o comando “ns3”. Entre na pasta ns-3.43 e vamos construir o ns3: ):
+Agora vamos contruir o ns3, fique atento as diferencas contidas nas ultimas versões. Ao invez do waf utilize o comando ns3. Entre na pasta ns-3.43 e vamos construir o ns3: ):
 
 ns-allinone-3.43/ns-3.43$./ns3 configure
 ns-allinone-3.43/ns-3.43$./ns3 build
