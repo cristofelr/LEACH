@@ -141,28 +141,40 @@ int main(int argc, char *argv[]) {
     ns3::NetDeviceContainer csmaDevices;
     std::cout << "Instaling CSMA on csmaDevices ..." << std::endl;
     csmaDevices = csma.Install(mobileNodes);
+    csmaDevices.Add(csma.Install(fixedApNode));  // Certifique-se de que está instalando para todos os nós
+
     std::cout << "Instalation finalized." << std::endl;
 
-   // Wi-Fi channel configuration
-    ns3::YansWifiChannelHelper channel = YansWifiChannelHelper::Default();
-    ns3::YansWifiPhyHelper phy;
-    phy.Set("TxPowerStart", DoubleValue(20.0));  // Potência inicial (dBm)
-    phy.Set("TxPowerEnd", DoubleValue(20.0));    // Potência final (dBm)
-    phy.SetChannel(channel.Create());
 
-    // MAC layer configuration for Wi-Fi
-    ns3::WifiHelper wifiMac;
-    wifiMac.SetStandard(WIFI_STANDARD_80211n);
-    wifiMac.SetRemoteStationManager("ns3::ConstantRateWifiManager");
+    WifiHelper wifi;
+    wifi.SetStandard(WIFI_STANDARD_80211g);
 
-    ns3::WifiMacHelper mac;
-    Ssid ssid = Ssid("CCLRFull");
-    mac.SetType("ns3::StaWifiMac", "Ssid", SsidValue(ssid), "ActiveProbing", BooleanValue(false));
+    YansWifiChannelHelper wifiChannel;
+    wifiChannel.SetPropagationDelay("ns3::ConstantSpeedPropagationDelayModel");
+    wifiChannel.AddPropagationLoss("ns3::FriisPropagationLossModel");
 
-    ns3::NetDeviceContainer apDevices;
-    apDevices = wifiMac.Install(phy, mac, mobileNodes);
-  
-     /*
+    YansWifiPhyHelper phy;
+    phy.SetPcapDataLinkType(WifiPhyHelper::DLT_IEEE802_11);
+
+    phy.SetChannel(wifiChannel.Create());
+
+    WifiMacHelper wifiMac;
+    wifiMac.SetType("ns3::StaWifiMac",
+                "Ssid", SsidValue(Ssid("ns-3-ssid")),
+                "ActiveProbing", BooleanValue(false));
+
+
+    // Configuração para o ponto de acesso fixo
+    WifiMacHelper apMac;
+    apMac.SetType("ns3::ApWifiMac"); // Para o AP fixo
+
+
+    NetDeviceContainer wifiDevices;
+    wifiDevices = wifi.Install(phy, wifiMac, mobileNodes);
+    wifiDevices = wifi.Install(phy, apMac, fixedApNode);
+
+
+    /*
     Mobility model for mobile nodes in a limited area
     The MobilityHelper controls node positioning.
     */
@@ -187,74 +199,60 @@ int main(int argc, char *argv[]) {
     // Install mobility model on mobile nodes
     mobileMobility.Install(mobileNodes);
 
-    //Position Access Point
    // Position Access Point
     ns3::MobilityHelper fixedMobility;
     fixedMobility.SetMobilityModel("ns3::ConstantPositionMobilityModel");  // Modelo de mobilidade fixa
     fixedMobility.Install(fixedApNode);  // Instala o modelo de mobilidade no nó do AP
 
-
-    /*
-    Fixed AP node configuration
-    */
-
-    /* Fixed AP configuration with constant position
-    ns3::MobilityHelper fixedMobility;
-    fixedMobility.SetPositionAllocator("ns3::ConstantPositionMobilityModel");
-    fixedMobility.Install(fixedApNode);
-
-    // Set fixed position for the AP (100, 100, 0)
-    Ptr<ConstantPositionMobilityModel> apMobility = fixedApNode.Get(0)->GetObject<ConstantPositionMobilityModel>();
-    apMobility->SetPosition(Vector(100.0, 100.0, 0.0)); // Position in X=100, Y=100, Z=0
-*/
     // Network stack configuration
     ns3::InternetStackHelper stack;
     stack.Install(mobileNodes);
-    
+    stack.Install(fixedApNode);
+
     // IP address configuration
     ns3::Ipv4AddressHelper address;
     address.SetBase("192.168.10.0", "255.255.255.0");
 
-    ns3::Ipv4InterfaceContainer csmaInterfaces;
-    csmaInterfaces = address.Assign(csmaDevices);
+    ns3::Ipv4InterfaceContainer wifiInterfaces;
+    wifiInterfaces = address.Assign(wifiDevices);
 
-    address.Assign(apDevices);
     address.Assign(csmaDevices);
-
+    address.Assign(wifiDevices);
+    
+    // Preencher as tabelas de roteamento
     ns3::Ipv4GlobalRoutingHelper::PopulateRoutingTables();
   
-    // Setup UDP Echo server setup
-    ns3::UdpEchoServerHelper echoServer(9);
-
     //Criando um container de ApplicationContainer serverApps;
-    ns3::ApplicationContainer serverApps = echoServer.Install (mobileNodes.Get(1)); // Server is installed on the AP node
-    serverApps.Start(Seconds(0.5));  // Server starts at time 1.0
-    serverApps.Stop(Seconds(10.0));  // Server stops at time 10.0
+    UdpEchoServerHelper echoServer(9); // Porta 9
+    ApplicationContainer serverApps = echoServer.Install(fixedApNode); // No servidor
+    serverApps.Start(Seconds(1.0)); // Inicia o servidor no tempo especificado
+    serverApps.Stop(Seconds(SIM_TIME));  // Para o servidor após o tempo final
+
 
     //Setando Ip dos servidores
-    ns3::Ipv4Address ipServidor1 = csmaInterfaces.GetAddress(0);
+    ns3::Ipv4Address ipServidor1 = wifiInterfaces.GetAddress(0);
 
     //Mostrando o Ip dos servidores
     std::cout << "Endereço IP do servidor 1: " << ipServidor1 << std::endl;
 
     // UDP Echo client setup
-    ns3::UdpEchoClientHelper echoClient (InetSocketAddress (Ipv4Address ("192.168.10.1"), 9));  // IP do servidor
-    echoClient.SetAttribute("MaxPackets", UintegerValue(10));
-    echoClient.SetAttribute("Interval", TimeValue(Seconds(1.0)));
-    echoClient.SetAttribute("PacketSize", UintegerValue(1024));
+    UdpEchoClientHelper echoClient(wifiInterfaces.GetAddress(0), 9);echoClient.SetAttribute("MaxPackets", UintegerValue(10));
+    echoClient.SetAttribute("Interval", TimeValue(Seconds(0.5)));
+    echoClient.SetAttribute("PacketSize", UintegerValue(512));
+    echoClient.SetAttribute("MaxPackets", UintegerValue(10));  // Limita a 5 pacotes
+
 
    //Criando um container de ApplicationContainer clientApps;
     ns3::ApplicationContainer clientApps;
 
     // Instalando o aplicativo em todos os nós do NodeContainer
-    clientApps = echoClient.Install(mobileNodes.Get(0));
+    clientApps = echoClient.Install(mobileNodes);
     clientApps.Start(Seconds(2.0));
-    clientApps.Stop(Seconds(100.0));
+    clientApps.Stop(Seconds(SIM_TIME));
 
     // Enable packet capture for CSMA devices
     AsciiTraceHelper ascii;
-    csma.EnablePcapAll("redeTCP-wifi");
-    
+    csma.EnablePcapAll("csma-trace");
 
     // Enable logging for CSMA helper
     LogComponentEnable("CsmaHelper", LOG_LEVEL_INFO);
@@ -277,10 +275,13 @@ int main(int argc, char *argv[]) {
 
       // Enable traffic between mobile nodes and the access point
       anim.EnablePacketMetadata(true);  // Enable packet metadata (visibility of the arrows)
-      // Start the simulation
-    ns3::Simulator::Stop(Seconds(SIM_TIME)); // Set simulation run time
-    ns3::Simulator::Run(); // Run the simulation
-    ns3::Simulator::Destroy(); // Destroy the simulator
+      
+         // Set simulation run time
+        ns3::Simulator::Stop(Seconds(SIM_TIME)); // Define o tempo da simulação
+    
+        // Start the simulation
+        ns3::Simulator::Run(); // Run the simulation
+        ns3::Simulator::Destroy(); // Destroy the simulator
 
     return 0;
 }
