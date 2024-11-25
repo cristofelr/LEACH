@@ -87,7 +87,7 @@ using namespace ns3;
 
 int main(int argc, char *argv[]) {
 
-    uint32_t numNodes = 25;
+    uint32_t numNodes = 30;
     bool verbose = true;
 
     CommandLine cmd;
